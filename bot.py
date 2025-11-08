@@ -178,7 +178,7 @@ CHATS_DIR = Path('./chats')
 CHANNELS_DIR = Path('./channels')
 TEMP_DIR = Path('./temp_downloads')
 STATS_FILE = Path('./bot_stats.json')
-TOKEN = '8240135408:AAFU1kt-Lmip73swX-HSz7CO_bEJiW_E-GU'
+TOKEN = os.getenv('TOKEN')
 
 # ВАЖНО: Укажите ID вашего канала или чата, где бот является администратором
 # Формат: "@channel_username" или "-100123456789" (для приватных каналов)
