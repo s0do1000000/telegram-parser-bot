@@ -3,8 +3,10 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application
 
-TOKEN = os.getenv("TELEGRAM_TOKEN")
+# === ВСТАВЬ СВОЙ ТОКЕН НИЖЕ ===
+TOKEN = os.getenv("TELEGRAM_TOKEN", "ВСТАВЬ_СВОЙ_ТОКЕН_СЮДА")
 
+# Создаем Flask-приложение
 app = Flask(__name__)
 bot_app = Application.builder().token(TOKEN).build()
 
@@ -19,4 +21,5 @@ def webhook():
     return "ok", 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
