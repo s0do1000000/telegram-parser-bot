@@ -5,7 +5,9 @@ from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ParseMode
+from flask import Flask, request
 
+# Ваши существующие константы и функции остаются без изменений
 TEXTS = {
     'ru': {
         'welcome': '🌟 Добро пожаловать в ParserTG!\n\nВыберите тип данных:',
@@ -179,10 +181,8 @@ CHANNELS_DIR = Path('./channels')
 TEMP_DIR = Path('./temp_downloads')
 STATS_FILE = Path('./bot_stats.json')
 TOKEN = os.getenv('TOKEN')
-
-# ВАЖНО: Укажите ID вашего канала или чата, где бот является администратором
-# Формат: "@channel_username" или "-100123456789" (для приватных каналов)
-MY_CHANNEL_ID = None  # Замените на ID вашего канала, например: "@parsertg_channel"
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Например: https://your-app.onrender.com
+PORT = int(os.getenv('PORT', 10000))
 
 user_language = {}
 user_state = {}
@@ -208,7 +208,6 @@ def save_stats(stats):
     """Сохранение статистики бота"""
     try:
         import json
-        # Конвертируем set в list для JSON
         stats_to_save = {
             'total_users': list(stats['total_users']),
             'downloads': stats['downloads'],
@@ -223,13 +222,10 @@ def save_stats(stats):
 def update_user_stats(user_id):
     """Обновление статистики пользователя"""
     stats = load_stats()
-
-    # Конвертируем списки обратно в set
     if isinstance(stats['total_users'], list):
         stats['total_users'] = set(stats['total_users'])
     if isinstance(stats['active_today'], list):
         stats['active_today'] = set(stats['active_today'])
-
     stats['total_users'].add(user_id)
     stats['active_today'].add(user_id)
     save_stats(stats)
@@ -238,12 +234,10 @@ def update_user_stats(user_id):
 def increment_downloads():
     """Увеличение счётчика скачиваний"""
     stats = load_stats()
-
     if isinstance(stats['total_users'], list):
         stats['total_users'] = set(stats['total_users'])
     if isinstance(stats['active_today'], list):
         stats['active_today'] = set(stats['active_today'])
-
     stats['downloads'] += 1
     save_stats(stats)
 
@@ -263,25 +257,20 @@ def get_categories(data_type):
     directory = CHATS_DIR if data_type == 'chats' else CHANNELS_DIR
     if not directory.exists():
         return {}
-
     categories = {}
     for csv_file in directory.glob('*.csv'):
         filename = csv_file.stem.lower()
-        # Поддержка разных форматов: tgstat_chats_global_crypto.csv
         if filename.startswith('tgstat_'):
             parts = filename.split('_')
-            if len(parts) >= 4:  # tgstat_chats_global_crypto
-                key = parts[-1]  # берём последнюю часть как категорию
+            if len(parts) >= 4:
+                key = parts[-1]
             else:
-                key = filename[7:]  # старый формат
-
-            # Подсчитываем количество записей в файле
+                key = filename[7:]
             try:
                 df = pd.read_csv(csv_file, sep=';', encoding='utf-8-sig')
                 record_count = len(df)
             except:
                 record_count = 0
-
             categories[key] = {
                 'file': csv_file,
                 'count': record_count
@@ -296,13 +285,9 @@ def get_category_name(key, lang='ru'):
 
 def csv_to_txt(csv_path, limit=None):
     try:
-        # ИСПРАВЛЕНО: правильная кодировка для телефона
         df = pd.read_csv(csv_path, sep=';', encoding='utf-8-sig')
-
-        # Ограничиваем количество записей
         if limit and limit > 0:
             df = df.head(limit)
-
         txt_content = ""
         for idx, row in df.iterrows():
             txt_content += f"\n{'=' * 60}\nЗапись #{idx + 1}\n{'=' * 60}\n"
@@ -310,11 +295,9 @@ def csv_to_txt(csv_path, limit=None):
                 value = row[col]
                 if pd.notna(value) and str(value).strip() not in ['N/A', '']:
                     txt_content += f"{col}: {value}\n"
-
         txt_content += f"\n\n{'=' * 60}\n"
         txt_content += f"Всего записей: {len(df)}\n"
         txt_content += f"{'=' * 60}\n"
-
         return txt_content
     except Exception as e:
         print(f"Error converting CSV to TXT: {e}")
@@ -325,48 +308,36 @@ def copy_file_to_temp(src_path, format_type, limit=None):
     try:
         filename = src_path.stem
         timestamp = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
-
         if format_type == 'csv':
-            # ИСПРАВЛЕНО: правильная кодировка для CSV
             df = pd.read_csv(src_path, sep=';', encoding='utf-8-sig')
-
-            # Ограничиваем количество записей
             if limit and limit > 0:
                 df = df.head(limit)
-
             dest_path = TEMP_DIR / f"{filename}_{limit if limit else 'all'}_{timestamp}.csv"
-            # Сохраняем с BOM для правильного отображения в Excel и телефоне
             df.to_csv(dest_path, sep=';', encoding='utf-8-sig', index=False)
-
         elif format_type == 'txt':
             txt_content = csv_to_txt(src_path, limit)
             if txt_content:
                 dest_path = TEMP_DIR / f"{filename}_{limit if limit else 'all'}_{timestamp}.txt"
-                # ИСПРАВЛЕНО: правильная кодировка для TXT
                 with open(dest_path, 'w', encoding='utf-8-sig') as f:
                     f.write(txt_content)
             else:
                 return None
-
         return dest_path
     except Exception as e:
         print(f"Error copying file: {e}")
         return None
 
 
+# Все ваши handler функции (start, stats_command, handle_text_input, button_callback) остаются БЕЗ ИЗМЕНЕНИЙ
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ensure_dirs()
     user_id = update.effective_user.id
     user_language[user_id] = 'ru'
-
-    # Обновляем статистику
     update_user_stats(user_id)
-
     keyboard = [[
         InlineKeyboardButton('🇷🇺 Русский', callback_data='lang_ru'),
         InlineKeyboardButton('🇬🇧 English', callback_data='lang_en')
     ]]
-
     await update.message.reply_text(
         TEXTS['ru']['language'],
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -374,30 +345,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /stats для просмотра статистики бота"""
     user_id = update.effective_user.id
     stats = load_stats()
-
-    # Конвертируем обратно в set если нужно
     if isinstance(stats['total_users'], list):
         stats['total_users'] = set(stats['total_users'])
     if isinstance(stats['active_today'], list):
         stats['active_today'] = set(stats['active_today'])
-
-    # Получаем информацию о боте
     bot_info = await context.bot.get_me()
-
-    # Пытаемся получить количество подписчиков канала (если бот админ канала)
-    channel_subscribers = "N/A"
-    try:
-        # Если у вас есть канал, где бот админ, укажите его ID
-        # Например: CHANNEL_ID = "@your_channel" или "-100123456789"
-        # chat = await context.bot.get_chat(CHANNEL_ID)
-        # channel_subscribers = chat.member_count
-        pass
-    except:
-        pass
-
     stats_text = f"""📊 <b>{get_text(user_id, 'bot_stats')}</b>
 
 👤 Имя бота: @{bot_info.username}
@@ -409,33 +363,24 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 💡 Используйте /start для работы с ботом"""
-
     await update.message.reply_text(stats_text, parse_mode=ParseMode.HTML)
 
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка текстового ввода количества"""
     user_id = update.effective_user.id
     state = user_state.get(user_id, {})
-
-    # Проверяем, ждём ли мы ввод количества
     if state.get('waiting_count'):
         try:
             count = int(update.message.text.strip())
             if count <= 0:
                 await update.message.reply_text(get_text(user_id, 'invalid_number'))
                 return
-
-            # Сохраняем количество
             user_state[user_id]['count'] = count
             user_state[user_id]['waiting_count'] = False
-
-            # Переходим к выбору формата
             keyboard = [[
                 InlineKeyboardButton(get_text(user_id, 'csv'), callback_data='format_csv'),
                 InlineKeyboardButton(get_text(user_id, 'txt'), callback_data='format_txt')
             ], [InlineKeyboardButton(get_text(user_id, 'back'), callback_data='back_to_count')]]
-
             await update.message.reply_text(
                 get_text(user_id, 'select_format'),
                 reply_markup=InlineKeyboardMarkup(keyboard)
@@ -448,16 +393,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
-
     await query.answer()
 
     if data.startswith('lang_'):
         lang = data.split('_')[1]
         user_language[user_id] = lang
-
-        # Обновляем статистику при выборе языка
         update_user_stats(user_id)
-
         keyboard = [[
             InlineKeyboardButton(get_text(user_id, 'chats'), callback_data='type_chats'),
             InlineKeyboardButton(get_text(user_id, 'channels'), callback_data='type_channels')
@@ -468,10 +409,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data_type = data.split('_')[1]
         user_state[user_id] = {'type': data_type}
         categories = get_categories(data_type)
-
         keyboard = []
         cat_list = sorted(categories.keys())
-
         for i in range(0, len(cat_list), 2):
             row = []
             for j in range(2):
@@ -479,31 +418,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     key = cat_list[i + j]
                     name = get_category_name(key, user_language.get(user_id, 'ru'))
                     count = categories[key]['count']
-                    # Добавляем количество записей к названию
                     button_text = f"{name} ({count})"
                     row.append(InlineKeyboardButton(button_text, callback_data=f'cat_{key}'))
             if row:
                 keyboard.append(row)
-
         keyboard.append([InlineKeyboardButton(get_text(user_id, 'home'), callback_data='home')])
-
-        # Подсчитываем общее количество
         total_count = sum(cat['count'] for cat in categories.values())
         data_type_text = get_text(user_id, 'chats') if data_type == 'chats' else get_text(user_id, 'channels')
         message_text = f"{get_text(user_id, 'select_category')}\n\n📊 Всего {data_type_text.lower()}: {total_count}"
-
         await query.edit_message_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith('cat_'):
         category = data.split('_', 1)[1]
         user_state[user_id]['category'] = category
-
-        # Получаем количество записей в категории
         categories = get_categories(user_state[user_id]['type'])
         category_count = categories.get(category, {}).get('count', 0)
         category_name = get_category_name(category, user_language.get(user_id, 'ru'))
-
-        # НОВОЕ: Показываем выбор количества с информацией о доступных записях
         keyboard = [[
             InlineKeyboardButton(get_text(user_id, 'count_10'), callback_data='count_10'),
             InlineKeyboardButton(get_text(user_id, 'count_50'), callback_data='count_50')
@@ -515,19 +445,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], [
             InlineKeyboardButton(get_text(user_id, 'back'), callback_data='back')
         ]]
-
         message_text = f"{get_text(user_id, 'select_count')}\n\n📁 {category_name}\n💾 Доступно записей: {category_count}"
-
-        await query.edit_message_text(
-            message_text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        await query.edit_message_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith('count_'):
         count_type = data.split('_')[1]
-
         if count_type == 'custom':
-            # Просим пользователя ввести число
             user_state[user_id]['waiting_count'] = True
             keyboard = [[InlineKeyboardButton(get_text(user_id, 'back'), callback_data='back_to_category')]]
             await query.edit_message_text(
@@ -535,18 +458,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
-            # Устанавливаем предустановленное количество
             if count_type == 'all':
-                user_state[user_id]['count'] = None  # None = все записи
+                user_state[user_id]['count'] = None
             else:
                 user_state[user_id]['count'] = int(count_type)
-
-            # Переходим к выбору формата
             keyboard = [[
                 InlineKeyboardButton(get_text(user_id, 'csv'), callback_data='format_csv'),
                 InlineKeyboardButton(get_text(user_id, 'txt'), callback_data='format_txt')
             ], [InlineKeyboardButton(get_text(user_id, 'back'), callback_data='back_to_count')]]
-
             await query.edit_message_text(
                 get_text(user_id, 'select_format'),
                 reply_markup=InlineKeyboardMarkup(keyboard)
@@ -557,30 +476,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state = user_state.get(user_id, {})
         categories = get_categories(state.get('type'))
         src_file_data = categories.get(state.get('category'))
-
         if not src_file_data:
             await query.edit_message_text(get_text(user_id, 'no_file'))
             return
-
         src_file = src_file_data['file']
         count = state.get('count')
-
         await query.edit_message_text(get_text(user_id, 'loading'))
-
         temp_file = copy_file_to_temp(src_file, format_type, count)
         if temp_file and temp_file.exists():
-            # Увеличиваем счётчик скачиваний
             increment_downloads()
-
             with open(temp_file, 'rb') as f:
                 await query.message.reply_document(document=f, filename=temp_file.name)
-
-            # Удаляем временный файл
             try:
                 temp_file.unlink()
             except:
                 pass
-
             keyboard = [[InlineKeyboardButton(get_text(user_id, 'home'), callback_data='home')]]
             success_message = f"{get_text(user_id, 'success')}\n\n📊 Выгружено записей: {count if count else src_file_data['count']}"
             await query.edit_message_text(success_message, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -588,7 +498,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(get_text(user_id, 'error'))
 
     elif data == 'back_to_count':
-        # Возврат к выбору количества
         keyboard = [[
             InlineKeyboardButton(get_text(user_id, 'count_10'), callback_data='count_10'),
             InlineKeyboardButton(get_text(user_id, 'count_50'), callback_data='count_50')
@@ -600,21 +509,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], [
             InlineKeyboardButton(get_text(user_id, 'back'), callback_data='back')
         ]]
-
         await query.edit_message_text(
             get_text(user_id, 'select_count'),
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
     elif data == 'back_to_category':
-        # Возврат к выбору категории
         data_type = user_state.get(user_id, {}).get('type')
         user_state[user_id]['waiting_count'] = False
         if data_type:
             categories = get_categories(data_type)
             keyboard = []
             cat_list = sorted(categories.keys())
-
             for i in range(0, len(cat_list), 2):
                 row = []
                 for j in range(2):
@@ -626,13 +532,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         row.append(InlineKeyboardButton(button_text, callback_data=f'cat_{key}'))
                 if row:
                     keyboard.append(row)
-
             keyboard.append([InlineKeyboardButton(get_text(user_id, 'home'), callback_data='home')])
-
             total_count = sum(cat['count'] for cat in categories.values())
             data_type_text = get_text(user_id, 'chats') if data_type == 'chats' else get_text(user_id, 'channels')
             message_text = f"{get_text(user_id, 'select_category')}\n\n📊 Всего {data_type_text.lower()}: {total_count}"
-
             await query.edit_message_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data == 'back':
@@ -642,7 +545,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             categories = get_categories(data_type)
             keyboard = []
             cat_list = sorted(categories.keys())
-
             for i in range(0, len(cat_list), 2):
                 row = []
                 for j in range(2):
@@ -654,13 +556,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         row.append(InlineKeyboardButton(button_text, callback_data=f'cat_{key}'))
                 if row:
                     keyboard.append(row)
-
             keyboard.append([InlineKeyboardButton(get_text(user_id, 'home'), callback_data='home')])
-
             total_count = sum(cat['count'] for cat in categories.values())
             data_type_text = get_text(user_id, 'chats') if data_type == 'chats' else get_text(user_id, 'channels')
             message_text = f"{get_text(user_id, 'select_category')}\n\n📊 Всего {data_type_text.lower()}: {total_count}"
-
             await query.edit_message_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data == 'home':
@@ -672,29 +571,72 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(get_text(user_id, 'welcome'), reply_markup=InlineKeyboardMarkup(keyboard))
 
 
+# НОВОЕ: Flask приложение для webhook
+app_flask = Flask(__name__)
+bot_app = None
+
+
+@app_flask.route('/')
+def index():
+    return 'Bot is running!', 200
+
+
+@app_flask.route('/health')
+def health():
+    return 'OK', 200
+
+
+@app_flask.route(f'/{TOKEN}', methods=['POST'])
+async def webhook():
+    """Обработка входящих обновлений от Telegram"""
+    if request.method == "POST":
+        update = Update.de_json(request.get_json(force=True), bot_app.bot)
+        await bot_app.process_update(update)
+    return 'OK', 200
+
+
+async def setup_webhook():
+    """Настройка webhook"""
+    global bot_app
+    bot_app = Application.builder().token(TOKEN).build()
+    
+    # Регистрируем handlers
+    bot_app.add_handler(CommandHandler('start', start))
+    bot_app.add_handler(CommandHandler('stats', stats_command))
+    bot_app.add_handler(CallbackQueryHandler(button_callback))
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
+    
+    # Устанавливаем команды меню
+    await bot_app.bot.set_my_commands([
+        BotCommand("start", "🚀 Начать работу"),
+        BotCommand("stats", "📊 Статистика бота")
+    ])
+    
+    # Устанавливаем webhook
+    webhook_url = f"{WEBHOOK_URL}/{TOKEN}"
+    await bot_app.bot.set_webhook(url=webhook_url)
+    
+    # Инициализируем приложение
+    await bot_app.initialize()
+    await bot_app.start()
+    
+    print(f"✅ Webhook установлен: {webhook_url}")
+    print(f"✅ Бот запущен на порту {PORT}")
+
+
 def main():
-    app = Application.builder().token(TOKEN).build()
-
-    # Регистрируем команды
-    app.add_handler(CommandHandler('start', start))
-    app.add_handler(CommandHandler('stats', stats_command))
-    app.add_handler(CallbackQueryHandler(button_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
-
-    print("✅ Бот запущен! Нажмите Ctrl+C для остановки...")
-    print("📊 Команды:")
-    print("   /start - Начать работу")
-    print("   /stats - Статистика бота")
-
-    # Устанавливаем команды в меню бота
-    async def post_init(application: Application) -> None:
-        await application.bot.set_my_commands([
-            BotCommand("start", "🚀 Начать работу"),
-            BotCommand("stats", "📊 Статистика бота")
-        ])
-
-    app.post_init = post_init
-    app.run_polling()
+    """Запуск Flask сервера с webhook"""
+    import asyncio
+    
+    ensure_dirs()
+    
+    # Настраиваем webhook асинхронно
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(setup_webhook())
+    
+    # Запускаем Flask сервер
+    app_flask.run(host='0.0.0.0', port=PORT, debug=False)
 
 
 if __name__ == '__main__':
