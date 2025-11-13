@@ -4,6 +4,8 @@ wheel>=0.42
 
 pandas==2.2.2
 flask==3.0.3
+Flask
 python-telegram-bot==21.4
+gunicorn
 gunicorn==22.0.0
 
