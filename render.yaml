@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: telegram-parser-bot
+    env: python
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    plan: free
+    envVars:
+      - key: TOKEN
+        sync: false
+      - key: WEBHOOK_URL
+        sync: false
