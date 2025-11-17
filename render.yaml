@@ -2,10 +2,9 @@ services:
   - type: web
     name: telegram-parser-bot
     env: python
-    plan: free
-    startCommand: python app.py
+    runtime: python-3.11.9
     buildCommand: pip install -r requirements.txt
-    healthCheckPath: /health
+    startCommand: python bot.py
     envVars:
       - key: TOKEN
         sync: false
