@@ -682,7 +682,7 @@ async def setup_webhook():
 
 
 @app.route(f'/webhook/{TOKEN.split(":")[0]}', methods=['POST'])
-async def webhook():
+def webhook():
     """Обработчик webhook от Telegram"""
     global bot_app
     
@@ -692,7 +692,11 @@ async def webhook():
     try:
         json_data = request.get_json(force=True)
         update = Update.de_json(json_data, bot_app.bot)
-        await bot_app.process_update(update)
+        
+        # Запускаем обработку в event loop
+        import asyncio
+        asyncio.run(bot_app.process_update(update))
+        
         return "OK", 200
     except Exception as e:
         print(f"Error processing update: {e}")
@@ -748,5 +752,14 @@ async def main():
 
 if __name__ == '__main__':
     import asyncio
+    import nest_asyncio
+    
     ensure_dirs()
+    
+    # Для совместимости с Flask
+    try:
+        nest_asyncio.apply()
+    except:
+        pass
+    
     asyncio.run(main())
