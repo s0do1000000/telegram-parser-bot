@@ -781,3 +781,13 @@ if __name__ == '__main__':
             for i in range(0, len(cat_list), 2):
                 row = []
                 for j in
+                if __name__ == '__main__':
+    ensure_dirs()
+    
+    # Запускаем бота
+    try:
+        asyncio.run(run_bot())
+    except KeyboardInterrupt:
+        print("\n👋 Бот остановлен")
+    except Exception as e:
+        print(f"❌ Критическая ошибка: {e}")
