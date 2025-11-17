@@ -646,29 +646,24 @@ def start_flask():
     """Запуск Flask сервера"""
     app.run(host="0.0.0.0", port=PORT, debug=False)
 
-def main():
-    """Главная функция"""
-    logger.info(f"🔄 Запуск бота на порту {PORT}")
-    
-    # Запуск Flask в отдельном потоке
-    flask_thread = threading.Thread(target=start_flask, daemon=True)
-    flask_thread.start()
-    logger.info(f"✅ Flask запущен на порту {PORT}")
-    
-    # Запуск Telegram бота
-    try:
-        asyncio.run(init_application())
-    except KeyboardInterrupt:
-        logger.info("🛑 Остановка бота...")
-    except Exception as e:
-        logger.exception(f"❌ Критическая ошибка: {e}")
-    finally:
-        if application:
-            try:
-                asyncio.run(application.stop())
-            except Exception:
-                pass
-        logger.info("✅ Бот остановлен")
+# УДАЛИ ВСЁ, ЧТО НИЖЕ init_application() И ВСТАВЬ ЭТО:
 
 if __name__ == "__main__":
-    main()
+    logger.info(f"Запуск бота на порту {PORT}")
+    
+    # Создаём и запускаем приложение
+    app = Application.builder().token(TOKEN).build()
+    
+    # Добавляем хендлеры
+    app.add_handler(CommandHandler("start", start_handler))
+    app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
+    
+    # Запускаем через run_webhook — ЭТО ЛУЧШИЙ СПОСОБ ДЛЯ RENDER
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path="/webhook",
+        webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}.onrender.com/webhook"
+    )
