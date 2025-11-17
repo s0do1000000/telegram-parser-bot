@@ -1,13 +1,33 @@
 import os
+import threading
+import asyncio
 import shutil
 import pandas as pd
 from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ParseMode
-from flask import Flask, request
+from flask import Flask, request, jsonify
 
-# Ваши существующие константы и функции остаются без изменений
+# ------------------ Константы и директории ------------------
+CHATS_DIR = Path('./chats')
+CHANNELS_DIR = Path('./channels')
+TEMP_DIR = Path('./temp_downloads')
+STATS_FILE = Path('./bot_stats.json')
+
+# Поддержка двух имён переменных окружения (на случай, если у тебя TOKEN или TELEGRAM_TOKEN)
+TOKEN = os.getenv('TOKEN') or os.getenv('TELEGRAM_TOKEN')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Например: https://telegram-parser-bot-7pev.onrender.com
+PORT = int(os.getenv('PORT', 10000))
+
+if not TOKEN:
+    raise RuntimeError("ERROR: TOKEN (or TELEGRAM_TOKEN) environment variable is not set.")
+
+if not WEBHOOK_URL:
+    # Не фатально — но webhook не установится автоматически
+    print("WARNING: WEBHOOK_URL is not set — webhook will not be installed automatically.")
+
+# --------- Тексты и категории (твоё содержимое, не менял логику) ----------
 TEXTS = {
     'ru': {
         'welcome': '🌟 Добро пожаловать в ParserTG!\n\nВыберите тип данных:',
@@ -71,141 +91,60 @@ TEXTS = {
 
 CATEGORY_NAMES = {
     'ru': {
-        'blogs': 'Блоги',
-        'news': 'Новости и СМИ',
-        'humor': 'Юмор и развлечения',
-        'technology': 'Технологии',
-        'economy': 'Экономика',
-        'business': 'Бизнес и стартапы',
-        'crypto': 'Криптовалюты',
-        'travel': 'Путешествия',
-        'marketing': 'Маркетинг, PR, реклама',
-        'psychology': 'Психология',
-        'design': 'Дизайн',
-        'politics': 'Политика',
-        'art': 'Искусство',
-        'law': 'Право',
-        'education': 'Образование',
-        'books': 'Книги',
-        'linguistics': 'Лингвистика',
-        'career': 'Карьера',
-        'knowledge': 'Познавательное',
-        'courses': 'Курсы и гайды',
-        'sports': 'Спорт',
-        'sport': 'Спорт',
-        'fashion': 'Мода и красота',
-        'medicine': 'Медицина',
-        'health': 'Здоровье и Фитнес',
-        'fitness': 'Здоровье и Фитнес',
-        'photos': 'Картинки и фото',
-        'software': 'Софт и приложения',
-        'video': 'Видео и фильмы',
-        'music': 'Музыка',
-        'games': 'Игры',
-        'food': 'Еда и кулинария',
-        'quotes': 'Цитаты',
-        'handmade': 'Рукоделие',
-        'crafts': 'Рукоделие',
-        'family': 'Семья и дети',
-        'nature': 'Природа',
-        'interior': 'Интерьер и строительство',
-        'telegram': 'Telegram',
-        'instagram': 'Инстаграм',
-        'sales': 'Продажи',
-        'transport': 'Транспорт',
-        'religion': 'Религия',
-        'esoteric': 'Эзотерика',
-        'darknet': 'Даркнет',
-        'betting': 'Букмекерство',
-        'shock': 'Шок-контент',
-        'erotic': 'Эротика',
-        'adult': 'Для взрослых',
-        'other': 'Другое',
+        'blogs': 'Блоги', 'news': 'Новости и СМИ', 'humor': 'Юмор и развлечения',
+        'technology': 'Технологии', 'economy': 'Экономика', 'business': 'Бизнес и стартапы',
+        'crypto': 'Криптовалюты', 'travel': 'Путешествия', 'marketing': 'Маркетинг, PR, реклама',
+        'psychology': 'Психология', 'design': 'Дизайн', 'politics': 'Политика',
+        'art': 'Искусство', 'law': 'Право', 'education': 'Образование',
+        'books': 'Книги', 'linguistics': 'Лингвистика', 'career': 'Карьера',
+        'knowledge': 'Познавательное', 'courses': 'Курсы и гайды', 'sports': 'Спорт',
+        'sport': 'Спорт', 'fashion': 'Мода и красота', 'medicine': 'Медицина',
+        'health': 'Здоровье и Фитнес', 'fitness': 'Здоровье и Фитнес', 'photos': 'Картинки и фото',
+        'software': 'Софт и приложения', 'video': 'Видео и фильмы', 'music': 'Музыка',
+        'games': 'Игры', 'food': 'Еда и кулинария', 'quotes': 'Цитаты',
+        'handmade': 'Рукоделие', 'crafts': 'Рукоделие', 'family': 'Семья и дети',
+        'nature': 'Природа', 'interior': 'Интерьер и строительство', 'telegram': 'Telegram',
+        'instagram': 'Инстаграм', 'sales': 'Продажи', 'transport': 'Транспорт',
+        'religion': 'Религия', 'esoteric': 'Эзотерика', 'darknet': 'Даркнет',
+        'betting': 'Букмекерство', 'shock': 'Шок-контент', 'erotic': 'Эротика',
+        'adult': 'Для взрослых', 'other': 'Другое',
     },
     'en': {
-        'blogs': 'Blogs',
-        'news': 'News & Media',
-        'humor': 'Humor & Entertainment',
-        'technology': 'Technology',
-        'economy': 'Economy',
-        'business': 'Business & Startups',
-        'crypto': 'Cryptocurrency',
-        'travel': 'Travel',
-        'marketing': 'Marketing, PR, Advertising',
-        'psychology': 'Psychology',
-        'design': 'Design',
-        'politics': 'Politics',
-        'art': 'Art',
-        'law': 'Law',
-        'education': 'Education',
-        'books': 'Books',
-        'linguistics': 'Linguistics',
-        'career': 'Career',
-        'knowledge': 'Knowledge',
-        'courses': 'Courses & Guides',
-        'sports': 'Sports',
-        'sport': 'Sports',
-        'fashion': 'Fashion & Beauty',
-        'medicine': 'Medicine',
-        'health': 'Health & Fitness',
-        'fitness': 'Health & Fitness',
-        'photos': 'Photos & Pictures',
-        'software': 'Software & Apps',
-        'video': 'Video & Films',
-        'music': 'Music',
-        'games': 'Games',
-        'food': 'Food & Cooking',
-        'quotes': 'Quotes',
-        'handmade': 'Handmade',
-        'crafts': 'Handmade',
-        'family': 'Family & Kids',
-        'nature': 'Nature',
-        'interior': 'Interior & Construction',
-        'telegram': 'Telegram',
-        'instagram': 'Instagram',
-        'sales': 'Sales',
-        'transport': 'Transport',
-        'religion': 'Religion',
-        'esoteric': 'Esoteric',
-        'darknet': 'Darknet',
-        'betting': 'Betting',
-        'shock': 'Shock Content',
-        'erotic': 'Erotic',
-        'adult': 'Adults',
-        'other': 'Other',
+        'blogs': 'Blogs', 'news': 'News & Media', 'humor': 'Humor & Entertainment',
+        'technology': 'Technology', 'economy': 'Economy', 'business': 'Business & Startups',
+        'crypto': 'Cryptocurrency', 'travel': 'Travel', 'marketing': 'Marketing, PR, Advertising',
+        'psychology': 'Psychology', 'design': 'Design', 'politics': 'Politics',
+        'art': 'Art', 'law': 'Law', 'education': 'Education',
+        'books': 'Books', 'linguistics': 'Linguistics', 'career': 'Career',
+        'knowledge': 'Knowledge', 'courses': 'Courses & Guides', 'sports': 'Sports',
+        'sport': 'Sports', 'fashion': 'Fashion & Beauty', 'medicine': 'Medicine',
+        'health': 'Health & Fitness', 'fitness': 'Health & Fitness', 'photos': 'Photos & Pictures',
+        'software': 'Software & Apps', 'video': 'Video & Films', 'music': 'Music',
+        'games': 'Games', 'food': 'Food & Cooking', 'quotes': 'Quotes',
+        'handmade': 'Handmade', 'crafts': 'Handmade', 'family': 'Family & Kids',
+        'nature': 'Nature', 'interior': 'Interior & Construction', 'telegram': 'Telegram',
+        'instagram': 'Instagram', 'sales': 'Sales', 'transport': 'Transport',
+        'religion': 'Religion', 'esoteric': 'Esoteric', 'darknet': 'Darknet',
+        'betting': 'Betting', 'shock': 'Shock Content', 'erotic': 'Erotic',
+        'adult': 'Adults', 'other': 'Other',
     }
 }
 
-CHATS_DIR = Path('./chats')
-CHANNELS_DIR = Path('./channels')
-TEMP_DIR = Path('./temp_downloads')
-STATS_FILE = Path('./bot_stats.json')
-TOKEN = os.getenv('TOKEN')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Например: https://your-app.onrender.com
-PORT = int(os.getenv('PORT', 10000))
-
+# ------------------ Утилиты: статистика, директории ------------------
 user_language = {}
 user_state = {}
 
-
 def load_stats():
-    """Загрузка статистики бота"""
     if STATS_FILE.exists():
         try:
             import json
             with open(STATS_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except:
+        except Exception:
             pass
-    return {
-        'total_users': set(),
-        'downloads': 0,
-        'active_today': set()
-    }
-
+    return {'total_users': set(), 'downloads': 0, 'active_today': set()}
 
 def save_stats(stats):
-    """Сохранение статистики бота"""
     try:
         import json
         stats_to_save = {
@@ -218,9 +157,7 @@ def save_stats(stats):
     except Exception as e:
         print(f"Error saving stats: {e}")
 
-
 def update_user_stats(user_id):
-    """Обновление статистики пользователя"""
     stats = load_stats()
     if isinstance(stats['total_users'], list):
         stats['total_users'] = set(stats['total_users'])
@@ -230,9 +167,7 @@ def update_user_stats(user_id):
     stats['active_today'].add(user_id)
     save_stats(stats)
 
-
 def increment_downloads():
-    """Увеличение счётчика скачиваний"""
     stats = load_stats()
     if isinstance(stats['total_users'], list):
         stats['total_users'] = set(stats['total_users'])
@@ -241,17 +176,14 @@ def increment_downloads():
     stats['downloads'] += 1
     save_stats(stats)
 
-
 def get_text(user_id, key):
     lang = user_language.get(user_id, 'ru')
-    return TEXTS[lang].get(key, '')
-
+    return TEXTS.get(lang, TEXTS['ru']).get(key, '')
 
 def ensure_dirs():
     CHATS_DIR.mkdir(exist_ok=True)
     CHANNELS_DIR.mkdir(exist_ok=True)
     TEMP_DIR.mkdir(exist_ok=True)
-
 
 def get_categories(data_type):
     directory = CHATS_DIR if data_type == 'chats' else CHANNELS_DIR
@@ -269,19 +201,14 @@ def get_categories(data_type):
             try:
                 df = pd.read_csv(csv_file, sep=';', encoding='utf-8-sig')
                 record_count = len(df)
-            except:
+            except Exception:
                 record_count = 0
-            categories[key] = {
-                'file': csv_file,
-                'count': record_count
-            }
+            categories[key] = {'file': csv_file, 'count': record_count}
     return categories
-
 
 def get_category_name(key, lang='ru'):
     lang_dict = CATEGORY_NAMES.get(lang, CATEGORY_NAMES['ru'])
     return lang_dict.get(key, key.title())
-
 
 def csv_to_txt(csv_path, limit=None):
     try:
@@ -302,7 +229,6 @@ def csv_to_txt(csv_path, limit=None):
     except Exception as e:
         print(f"Error converting CSV to TXT: {e}")
         return None
-
 
 def copy_file_to_temp(src_path, format_type, limit=None):
     try:
@@ -327,8 +253,7 @@ def copy_file_to_temp(src_path, format_type, limit=None):
         print(f"Error copying file: {e}")
         return None
 
-
-# Все ваши handler функции (start, stats_command, handle_text_input, button_callback) остаются БЕЗ ИЗМЕНЕНИЙ
+# ------------------ Handlers (логика оставлена без изменений) ------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ensure_dirs()
     user_id = update.effective_user.id
@@ -338,11 +263,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton('🇷🇺 Русский', callback_data='lang_ru'),
         InlineKeyboardButton('🇬🇧 English', callback_data='lang_en')
     ]]
-    await update.message.reply_text(
-        TEXTS['ru']['language'],
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
+    await update.message.reply_text(TEXTS['ru']['language'], reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -365,7 +286,6 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💡 Используйте /start для работы с ботом"""
     await update.message.reply_text(stats_text, parse_mode=ParseMode.HTML)
 
-
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     state = user_state.get(user_id, {})
@@ -381,13 +301,9 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton(get_text(user_id, 'csv'), callback_data='format_csv'),
                 InlineKeyboardButton(get_text(user_id, 'txt'), callback_data='format_txt')
             ], [InlineKeyboardButton(get_text(user_id, 'back'), callback_data='back_to_count')]]
-            await update.message.reply_text(
-                get_text(user_id, 'select_format'),
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+            await update.message.reply_text(get_text(user_id, 'select_format'), reply_markup=InlineKeyboardMarkup(keyboard))
         except ValueError:
             await update.message.reply_text(get_text(user_id, 'invalid_number'))
-
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -453,10 +369,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if count_type == 'custom':
             user_state[user_id]['waiting_count'] = True
             keyboard = [[InlineKeyboardButton(get_text(user_id, 'back'), callback_data='back_to_category')]]
-            await query.edit_message_text(
-                get_text(user_id, 'enter_number'),
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+            await query.edit_message_text(get_text(user_id, 'enter_number'), reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             if count_type == 'all':
                 user_state[user_id]['count'] = None
@@ -466,10 +379,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton(get_text(user_id, 'csv'), callback_data='format_csv'),
                 InlineKeyboardButton(get_text(user_id, 'txt'), callback_data='format_txt')
             ], [InlineKeyboardButton(get_text(user_id, 'back'), callback_data='back_to_count')]]
-            await query.edit_message_text(
-                get_text(user_id, 'select_format'),
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+            await query.edit_message_text(get_text(user_id, 'select_format'), reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith('format_'):
         format_type = data.split('_')[1]
@@ -509,10 +419,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], [
             InlineKeyboardButton(get_text(user_id, 'back'), callback_data='back')
         ]]
-        await query.edit_message_text(
-            get_text(user_id, 'select_count'),
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        await query.edit_message_text(get_text(user_id, 'select_count'), reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data == 'back_to_category':
         data_type = user_state.get(user_id, {}).get('type')
@@ -570,77 +477,106 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]]
         await query.edit_message_text(get_text(user_id, 'welcome'), reply_markup=InlineKeyboardMarkup(keyboard))
 
-
-# НОВОЕ: Flask приложение для webhook
+# ------------------ Flask + background async runner ------------------
 app_flask = Flask(__name__)
-bot_app = None
 
+# Создадим Application, но не запускаем его в основном потоке.
+bot_app: Application = Application.builder().token(TOKEN).build()
+bot_loop: asyncio.AbstractEventLoop = None
 
+# Регистрируем обработчики в bot_app (сейчас, синхронно)
+bot_app.add_handler(CommandHandler('start', start))
+bot_app.add_handler(CommandHandler('stats', stats_command))
+bot_app.add_handler(CallbackQueryHandler(button_callback))
+bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
+
+# Устанавливаем команды меню (будет выполнено при инициализации бота)
+async def set_bot_commands():
+    try:
+        await bot_app.bot.set_my_commands([
+            BotCommand("start", "🚀 Начать работу"),
+            BotCommand("stats", "📊 Статистика бота")
+        ])
+    except Exception as e:
+        print("Warning setting bot commands:", e)
+
+# Инициализация и запуск Application в отдельном asyncio loop (в background thread)
+def _start_async_loop():
+    global bot_loop
+    bot_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(bot_loop)
+
+    async def _init_and_start():
+        try:
+            ensure_dirs()
+            await bot_app.initialize()
+            # Устанавливаем команды (если возможно)
+            await set_bot_commands()
+            # Если указан WEBHOOK_URL — попытаемся установить webhook
+            if WEBHOOK_URL:
+                webhook_target = f"{WEBHOOK_URL.rstrip('/')}/{TOKEN}"
+                try:
+                    await bot_app.bot.set_webhook(url=webhook_target)
+                    print(f"✅ Webhook установлен: {webhook_target}")
+                except Exception as e:
+                    print("Failed to set webhook:", e)
+            # Запускаем internal tasks Application (не polling)
+            await bot_app.start()
+            print("✅ bot_app started in background loop")
+        except Exception as exc:
+            print("Fatal error starting bot_app:", exc)
+
+    # Запускаем и поддерживаем loop
+    bot_loop.run_until_complete(_init_and_start())
+    try:
+        bot_loop.run_forever()
+    finally:
+        # при завершении корректно завершаем
+        bot_loop.run_until_complete(bot_app.stop())
+        bot_loop.run_until_complete(bot_app.shutdown())
+
+# Flask routes (синхронные). Они передают Update в bot_app через run_coroutine_threadsafe.
 @app_flask.route('/')
 def index():
     return 'Bot is running!', 200
-
 
 @app_flask.route('/health')
 def health():
     return 'OK', 200
 
-
 @app_flask.route(f'/{TOKEN}', methods=['POST'])
-async def webhook():
-    """Обработка входящих обновлений от Telegram"""
-    if request.method == "POST":
-        update = Update.de_json(request.get_json(force=True), bot_app.bot)
-        await bot_app.process_update(update)
-    return 'OK', 200
+def webhook():
+    """Синхронный Flask-роут принимает POST от Telegram и передаёт обновление в asyncio loop."""
+    try:
+        data = request.get_json(force=True)
+        if not data:
+            return jsonify({'ok': False, 'error': 'no json'}), 400
+        update = Update.de_json(data, bot_app.bot)
+        # Запускаем обработку обновления в bot_loop
+        future = asyncio.run_coroutine_threadsafe(bot_app.process_update(update), bot_loop)
+        # Не блокируем долго — ждём краткое время, чтобы поймать ошибки
+        try:
+            result = future.result(timeout=10)
+        except Exception as e:
+            # log but still return 200 to Telegram so it won't retry rapidly
+            print("Error processing update:", e)
+        return 'OK', 200
+    except Exception as e:
+        print("Webhook route exception:", e)
+        return 'ERR', 500
 
-
-async def setup_webhook():
-    """Настройка webhook"""
-    global bot_app
-    bot_app = Application.builder().token(TOKEN).build()
-    
-    # Регистрируем handlers
-    bot_app.add_handler(CommandHandler('start', start))
-    bot_app.add_handler(CommandHandler('stats', stats_command))
-    bot_app.add_handler(CallbackQueryHandler(button_callback))
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
-    
-    # Устанавливаем команды меню
-    await bot_app.bot.set_my_commands([
-        BotCommand("start", "🚀 Начать работу"),
-        BotCommand("stats", "📊 Статистика бота")
-    ])
-    
-    # Устанавливаем webhook
-    webhook_url = f"{WEBHOOK_URL}/{TOKEN}"
-    await bot_app.bot.set_webhook(url=webhook_url)
-    
-    # Инициализируем приложение
-    await bot_app.initialize()
-    await bot_app.start()
-    
-    print(f"✅ Webhook установлен: {webhook_url}")
-    print(f"✅ Бот запущен на порту {PORT}")
-
-
+# ------------------ Main ------------------
 def main():
-    """Запуск Flask сервера с webhook"""
-    import asyncio
-    
-    ensure_dirs()
-    
-    # Настраиваем webhook асинхронно
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(setup_webhook())
-    
-    # Запускаем Flask сервер
+    # Запускаем background asyncio loop в демоне (чтобы Flask продолжал работать)
+    t = threading.Thread(target=_start_async_loop, daemon=True)
+    t.start()
+    # Запускаем Flask (synchronous)
+    print(f"Starting Flask on port {PORT}, webhook path: /{TOKEN}")
+    # Если ты используешь gunicorn — команду запуска нужно будет поменять (см. инструкции).
     app_flask.run(host='0.0.0.0', port=PORT, debug=False)
-
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        print("\n✋ Бот остановлен")
+        print("Shutting down...")

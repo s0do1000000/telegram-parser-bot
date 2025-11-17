@@ -1,33 +1,21 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-build/
-dist/
-*.egg-info/
+# PyCharm
+.idea/
 
-# Временные файлы
+# Temporary files
 temp_downloads/
 *.log
+*.tmp
 
-# Статистика (опционально, если хотите сохранять на сервере)
-bot_stats.json
+# Python
+__pycache__/
+*.pyc
 
-# Переменные окружения
-.env
-.env.local
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
+# System
 .DS_Store
 Thumbs.db
+
+# Old files
+telegram-parser-bot/
+main
+main.py
+start.sh
