@@ -21,7 +21,7 @@ def health():
 
 # Конфигурация
 TOKEN = os.getenv('TOKEN', '8240135408:AAFU1kt-Lmip73swX-HSz7CO_bEJiW_E-GU')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://telegram-parser-bot-r27h.onrender.com/webhook/8531190272')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://telegram-parser-bot-1-jd3s.onrender.com/webhook/8240135408')
 PORT = int(os.environ.get('PORT', 8080))
 
 # Остальные настройки
