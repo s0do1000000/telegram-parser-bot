@@ -10,11 +10,9 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-# Инициализация Git (если еще не инициализирован)
-if [ ! -d .git ]; then
-    echo "📁 Инициализация Git репозитория..."
-    git init
-fi
+# Удаляем ненужные файлы
+echo "🗑️  Удаляем ненужные файлы..."
+rm -f gunicorn_config.py main
 
 # Добавляем все файлы
 echo "📝 Добавляем файлы..."
@@ -25,7 +23,6 @@ git add bot.py
 git add requirements.txt
 git add runtime.txt
 git add render.yaml
-git add gunicorn_config.py
 git add start.sh
 
 # Делаем директории для данных пустыми (но отслеживаемыми)
@@ -41,38 +38,32 @@ git status
 
 # Коммитим изменения
 echo "💾 Создаем коммит..."
-git commit -m "Prepare for Render deployment
+git commit -m "Fix Render deployment configuration
 
-- Fixed runtime.txt and .python-version
-- Updated render.yaml with all env vars
-- Improved .gitignore
-- Updated README.md with deployment instructions
-- Added start.sh for initialization"
+- Fixed render.yaml startCommand to use python bot.py
+- Removed gunicorn from requirements (not needed)
+- Added directory creation in buildCommand
+- Updated .gitignore
+- Removed unnecessary gunicorn_config.py"
 
-# Инструкции для пользователя
 echo ""
-echo "✅ Файлы подготовлены для коммита!"
+echo "✅ Файлы подготовлены!"
 echo ""
 echo "📋 Следующие шаги:"
-echo "1. Создайте репозиторий на GitHub (если еще не создан)"
-echo "2. Подключите удаленный репозиторий:"
-echo "   git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git"
 echo ""
-echo "3. Отправьте изменения:"
-echo "   git branch -M main"
-echo "   git push -u origin main"
+echo "1. Отправьте изменения на GitHub:"
+echo "   git push origin main"
 echo ""
-echo "4. На Render.com:"
-echo "   - Создайте новый Web Service"
-echo "   - Подключите ваш GitHub репозиторий"
-echo "   - Render автоматически обнаружит render.yaml"
-echo "   - Добавьте переменные окружения:"
-echo "     * TOKEN - ваш Telegram bot token"
-echo "     * WEBHOOK_URL - будет https://your-app-name.onrender.com"
-echo "     * MY_CHANNEL_ID - (опционально) ID вашего канала"
+echo "2. На Render.com:"
+echo "   - Нажмите 'Manual Deploy' → 'Clear build cache & deploy'"
+echo "   - Или просто 'Manual Deploy' → 'Deploy latest commit'"
 echo ""
-echo "5. Нажмите Deploy!"
+echo "3. Установите переменные окружения (если еще не установлены):"
+echo "   TOKEN = ваш_токен_от_BotFather"
+echo "   WEBHOOK_URL = https://ваше-приложение.onrender.com"
+echo "   MY_CHANNEL_ID = (опционально)"
+echo ""
+echo "4. После деплоя бот автоматически установит webhook"
 echo ""
 echo "⚠️  Важно: Загрузите CSV файлы в папки /chats и /channels"
-echo "    после первого развертывания через Render Dashboard"
 echo ""

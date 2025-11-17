@@ -3,3 +3,9 @@ bot_stats.json
 .env
 __pycache__/
 *.pyc
+*.log
+.DS_Store
+venv/
+env/
+gunicorn_config.py
+main
