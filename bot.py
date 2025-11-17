@@ -725,63 +725,13 @@ async def setup_bot():
 
 
 async def run_bot():
-    """Основная функция для запуска бота"""
-    global loop
-    
-    # Получаем текущий event loop
-    loop = asyncio.get_event_loop()
-    
-    # Настраиваем бота
-    await setup_bot()
-    
-    # Запускаем Flask в отдельном потоке
-    flask_thread = Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    # Держим бота активным
-    while True:
-        await asyncio.sleep(1)
+    # Добавьте эту функцию для обратной совместимости со старой командой запуска
+async def main():
+    """Alias для run_bot для обратной совместимости"""
+    await run_bot()
 
 
 if __name__ == '__main__':
-    ensure_dirs()
-    
-    # Запускаем бота
-    try:
-        asyncio.run(run_bot())
-    except KeyboardInterrupt:
-        print("\n👋 Бот остановлен")
-    except Exception as e:
-        print(f"❌ Критическая ошибка: {e}") range(2):
-                    if i + j < len(cat_list):
-                        key = cat_list[i + j]
-                        name = get_category_name(key, user_language.get(user_id, 'ru'))
-                        count = categories[key]['count']
-                        button_text = f"{name} ({count})"
-                        row.append(InlineKeyboardButton(button_text, callback_data=f'cat_{key}'))
-                if row:
-                    keyboard.append(row)
-
-            keyboard.append([InlineKeyboardButton(get_text(user_id, 'home'), callback_data='home')])
-            
-            total_count = sum(cat['count'] for cat in categories.values())
-            data_type_text = get_text(user_id, 'chats') if data_type == 'chats' else get_text(user_id, 'channels')
-            message_text = f"{get_text(user_id, 'select_category')}\n\n📊 Всего {data_type_text.lower()}: {total_count}"
-            
-            await query.edit_message_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard))
-
-    elif data == 'back':
-        data_type = user_state.get(user_id, {}).get('type')
-        user_state[user_id]['waiting_count'] = False
-        if data_type:
-            categories = get_categories(data_type)
-            keyboard = []
-            cat_list = sorted(categories.keys())
-
-            for i in range(0, len(cat_list), 2):
-                row = []
-                for j in
-                if __name__ == '__main__':
     ensure_dirs()
     
     # Запускаем бота
