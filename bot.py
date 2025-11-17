@@ -743,7 +743,6 @@ async def run_bot():
         await asyncio.sleep(1)
 
 
-# Добавьте эту функцию для обратной совместимости со старой командой запуска
 async def main():
     """Alias для run_bot для обратной совместимости"""
     await run_bot()
