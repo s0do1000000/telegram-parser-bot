@@ -725,7 +725,25 @@ async def setup_bot():
 
 
 async def run_bot():
-    # Добавьте эту функцию для обратной совместимости со старой командой запуска
+    """Основная функция для запуска бота"""
+    global loop
+    
+    # Получаем текущий event loop
+    loop = asyncio.get_event_loop()
+    
+    # Настраиваем бота
+    await setup_bot()
+    
+    # Запускаем Flask в отдельном потоке
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Держим бота активным
+    while True:
+        await asyncio.sleep(1)
+
+
+# Добавьте эту функцию для обратной совместимости со старой командой запуска
 async def main():
     """Alias для run_bot для обратной совместимости"""
     await run_bot()
