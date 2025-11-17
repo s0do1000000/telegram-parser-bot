@@ -1,21 +1,5 @@
-# PyCharm
-.idea/
-
-# Temporary files
 temp_downloads/
-*.log
-*.tmp
-
-# Python
+bot_stats.json
+.env
 __pycache__/
 *.pyc
-
-# System
-.DS_Store
-Thumbs.db
-
-# Old files
-telegram-parser-bot/
-main
-main.py
-start.sh
