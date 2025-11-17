@@ -10,3 +10,7 @@ services:
         sync: false
       - key: WEBHOOK_URL
         sync: false
+      - key: MY_CHANNEL_ID
+        sync: false
+      - key: PORT
+        value: 10000
