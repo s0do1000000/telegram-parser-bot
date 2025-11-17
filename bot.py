@@ -7,6 +7,11 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.constants import ParseMode
 from flask import Flask, request
 from threading import Thread
+import asyncio
+import nest_asyncio
+
+# Применяем nest_asyncio для совместимости
+nest_asyncio.apply()
 
 # Flask приложение для Render
 app = Flask(__name__)
@@ -21,7 +26,7 @@ def health():
 
 # Конфигурация
 TOKEN = os.getenv('TOKEN', '8240135408:AAFU1kt-Lmip73swX-HSz7CO_bEJiW_E-GU')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://telegram-parser-bot-1-jd3s.onrender.com/webhook/8240135408')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
 PORT = int(os.environ.get('PORT', 8080))
 
 # Остальные настройки
@@ -30,7 +35,7 @@ TEXTS = {
         'welcome': '🌟 Добро пожаловать в ParserTG!\n\nВыберите тип данных:',
         'chats': '💬 Чаты',
         'channels': '📢 Каналы',
-        'select_category': '📁 Выберите категорию:',
+        'select_category': '🔍 Выберите категорию:',
         'select_count': '🔢 Сколько записей выгрузить?\n\n💡 Введите число или выберите:',
         'select_format': '📋 Выберите формат:',
         'txt': '📄 TXT',
@@ -48,7 +53,7 @@ TEXTS = {
         'count_50': '50 записей',
         'count_100': '100 записей',
         'count_all': 'Все записи',
-        'count_custom': '✍️ Ввести своё число',
+        'count_custom': '✏️ Ввести своё число',
         'stats': '📊 Статистика',
         'bot_stats': '🤖 Статистика бота ParserTG',
         'total_users': '👥 Всего пользователей',
@@ -59,7 +64,7 @@ TEXTS = {
         'welcome': '🌟 Welcome to ParserTG!\n\nSelect data type:',
         'chats': '💬 Chats',
         'channels': '📢 Channels',
-        'select_category': '📁 Select category:',
+        'select_category': '🔍 Select category:',
         'select_count': '🔢 How many records to export?\n\n💡 Enter number or select:',
         'select_format': '📋 Select format:',
         'txt': '📄 TXT',
@@ -77,7 +82,7 @@ TEXTS = {
         'count_50': '50 records',
         'count_100': '100 records',
         'count_all': 'All records',
-        'count_custom': '✍️ Enter custom number',
+        'count_custom': '✏️ Enter custom number',
         'stats': '📊 Statistics',
         'bot_stats': '🤖 ParserTG Bot Statistics',
         'total_users': '👥 Total users',
@@ -622,34 +627,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             await query.edit_message_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-    elif data == 'back':
-        data_type = user_state.get(user_id, {}).get('type')
-        user_state[user_id]['waiting_count'] = False
-        if data_type:
-            categories = get_categories(data_type)
-            keyboard = []
-            cat_list = sorted(categories.keys())
-
-            for i in range(0, len(cat_list), 2):
-                row = []
-                for j in range(2):
-                    if i + j < len(cat_list):
-                        key = cat_list[i + j]
-                        name = get_category_name(key, user_language.get(user_id, 'ru'))
-                        count = categories[key]['count']
-                        button_text = f"{name} ({count})"
-                        row.append(InlineKeyboardButton(button_text, callback_data=f'cat_{key}'))
-                if row:
-                    keyboard.append(row)
-
-            keyboard.append([InlineKeyboardButton(get_text(user_id, 'home'), callback_data='home')])
-            
-            total_count = sum(cat['count'] for cat in categories.values())
-            data_type_text = get_text(user_id, 'chats') if data_type == 'chats' else get_text(user_id, 'channels')
-            message_text = f"{get_text(user_id, 'select_category')}\n\n📊 Всего {data_type_text.lower()}: {total_count}"
-            
-            await query.edit_message_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard))
-
     elif data == 'home':
         user_state[user_id] = {}
         keyboard = [[
@@ -661,24 +638,25 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Глобальная переменная для Application
 bot_app: Application = None
+loop = None
 
 
-async def setup_webhook():
-    """Настройка webhook"""
-    global bot_app
-    
-    if not WEBHOOK_URL:
-        print("WARNING: WEBHOOK_URL is not set — webhook will not be installed automatically.")
-        return
+def process_update_sync(update_data):
+    """Синхронная обёртка для обработки обновлений"""
+    global bot_app, loop
     
     try:
-        await bot_app.bot.set_webhook(
-            url=WEBHOOK_URL,
-            allowed_updates=Update.ALL_TYPES
+        update = Update.de_json(update_data, bot_app.bot)
+        
+        # Запускаем в существующем event loop
+        asyncio.run_coroutine_threadsafe(
+            bot_app.process_update(update),
+            loop
         )
-        print(f"✅ Webhook установлен: {WEBHOOK_URL}")
+        return True
     except Exception as e:
-        print(f"❌ Ошибка установки webhook: {e}")
+        print(f"Error processing update: {e}")
+        return False
 
 
 @app.route(f'/webhook/{TOKEN.split(":")[0]}', methods=['POST'])
@@ -691,15 +669,10 @@ def webhook():
     
     try:
         json_data = request.get_json(force=True)
-        update = Update.de_json(json_data, bot_app.bot)
-        
-        # Запускаем обработку в event loop
-        import asyncio
-        asyncio.run(bot_app.process_update(update))
-        
+        process_update_sync(json_data)
         return "OK", 200
     except Exception as e:
-        print(f"Error processing update: {e}")
+        print(f"Error in webhook: {e}")
         return "Error", 500
 
 
@@ -708,9 +681,9 @@ def run_flask():
     app.run(host='0.0.0.0', port=PORT)
 
 
-async def main():
-    """Основная функция для запуска бота"""
-    global bot_app
+async def setup_bot():
+    """Настройка и запуск бота"""
+    global bot_app, loop
     
     # Создаём приложение бота
     bot_app = Application.builder().token(TOKEN).build()
@@ -731,7 +704,17 @@ async def main():
     await bot_app.initialize()
     
     # Устанавливаем webhook
-    await setup_webhook()
+    if WEBHOOK_URL:
+        try:
+            await bot_app.bot.set_webhook(
+                url=WEBHOOK_URL,
+                allowed_updates=Update.ALL_TYPES
+            )
+            print(f"✅ Webhook установлен: {WEBHOOK_URL}")
+        except Exception as e:
+            print(f"❌ Ошибка установки webhook: {e}")
+    else:
+        print("⚠️ WEBHOOK_URL не установлен")
     
     # Запускаем приложение
     await bot_app.start()
@@ -739,27 +722,62 @@ async def main():
     print("✅ Бот запущен на Render с webhook!")
     print(f"📡 Webhook URL: {WEBHOOK_URL}")
     print(f"🌐 Port: {PORT}")
+
+
+async def run_bot():
+    """Основная функция для запуска бота"""
+    global loop
+    
+    # Получаем текущий event loop
+    loop = asyncio.get_event_loop()
+    
+    # Настраиваем бота
+    await setup_bot()
     
     # Запускаем Flask в отдельном потоке
     flask_thread = Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
     # Держим бота активным
-    import asyncio
     while True:
         await asyncio.sleep(1)
 
 
 if __name__ == '__main__':
-    import asyncio
-    import nest_asyncio
-    
     ensure_dirs()
     
-    # Для совместимости с Flask
+    # Запускаем бота
     try:
-        nest_asyncio.apply()
-    except:
-        pass
-    
-    asyncio.run(main())
+        asyncio.run(run_bot())
+    except KeyboardInterrupt:
+        print("\n👋 Бот остановлен")
+    except Exception as e:
+        print(f"❌ Критическая ошибка: {e}") range(2):
+                    if i + j < len(cat_list):
+                        key = cat_list[i + j]
+                        name = get_category_name(key, user_language.get(user_id, 'ru'))
+                        count = categories[key]['count']
+                        button_text = f"{name} ({count})"
+                        row.append(InlineKeyboardButton(button_text, callback_data=f'cat_{key}'))
+                if row:
+                    keyboard.append(row)
+
+            keyboard.append([InlineKeyboardButton(get_text(user_id, 'home'), callback_data='home')])
+            
+            total_count = sum(cat['count'] for cat in categories.values())
+            data_type_text = get_text(user_id, 'chats') if data_type == 'chats' else get_text(user_id, 'channels')
+            message_text = f"{get_text(user_id, 'select_category')}\n\n📊 Всего {data_type_text.lower()}: {total_count}"
+            
+            await query.edit_message_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data == 'back':
+        data_type = user_state.get(user_id, {}).get('type')
+        user_state[user_id]['waiting_count'] = False
+        if data_type:
+            categories = get_categories(data_type)
+            keyboard = []
+            cat_list = sorted(categories.keys())
+
+            for i in range(0, len(cat_list), 2):
+                row = []
+                for j in
