@@ -669,16 +669,22 @@ def webhook():
     
     try:
         json_data = request.get_json(force=True)
-        process_update_sync(json_data)
+        update = Update.de_json(json_data, bot_app.bot)
+        
+        # Создаем задачу для обработки обновления
+        if loop and bot_app:
+            asyncio.run_coroutine_threadsafe(
+                bot_app.process_update(update),
+                loop
+            )
+        
         return "OK", 200
     except Exception as e:
-        print(f"Error in webhook: {e}")
+        print(f"❌ Error in webhook: {e}")
+        import traceback
+        traceback.print_exc()
         return "Error", 500
 
-
-def run_flask():
-    """Запуск Flask сервера"""
-    app.run(host='0.0.0.0', port=PORT)
 
 
 async def setup_bot():
@@ -705,12 +711,14 @@ async def setup_bot():
     
     # Устанавливаем webhook
     if WEBHOOK_URL:
+        webhook_path = f"/webhook/{TOKEN.split(':')[0]}"
+        full_webhook_url = f"{WEBHOOK_URL}{webhook_path}"
         try:
             await bot_app.bot.set_webhook(
-                url=WEBHOOK_URL,
+                url=full_webhook_url,
                 allowed_updates=Update.ALL_TYPES
             )
-            print(f"✅ Webhook установлен: {WEBHOOK_URL}")
+            print(f"✅ Webhook установлен: {full_webhook_url}")
         except Exception as e:
             print(f"❌ Ошибка установки webhook: {e}")
     else:
@@ -729,14 +737,10 @@ async def run_bot():
     global loop
     
     # Получаем текущий event loop
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     
     # Настраиваем бота
     await setup_bot()
-    
-    # Запускаем Flask в отдельном потоке
-    flask_thread = Thread(target=run_flask, daemon=True)
-    flask_thread.start()
     
     # Держим бота активным
     while True:
