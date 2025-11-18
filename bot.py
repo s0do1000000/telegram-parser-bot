@@ -383,10 +383,10 @@ if __name__ == "__main__":
         ])
 
     # Запуск через встроенный webhook-сервер (uvicorn внутри python-telegram-bot)
-    app.run_webhook(
+           app.run_webhook(
         listen="0.0.0.0",
-        port=PORT,
-        url_path="/",                                           # Telegram будет слать на корень
-        webhook_url=f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}.onrender.com/",
+        port=int(os.environ.get("PORT", 10000)),
+        url_path="/webhook",
+        webhook_url=f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}.onrender.com/webhook",
         drop_pending_updates=True,
     )
