@@ -648,22 +648,40 @@ def start_flask():
 
 # УДАЛИ ВСЁ, ЧТО НИЖЕ init_application() И ВСТАВЬ ЭТО:
 
+# УДАЛИ ВСЁ, что ниже async def init_application() и вставь это:
+
 if __name__ == "__main__":
+    import os
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
     logger.info(f"Запуск бота на порту {PORT}")
-    
-    # Создаём и запускаем приложение
+
+    # Создаём приложение
     app = Application.builder().token(TOKEN).build()
-    
-    # Добавляем хендлеры
+
+    # Добавляем все хендлеры
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
-    
-    # Запускаем через run_webhook — ЭТО ЛУЧШИЙ СПОСОБ ДЛЯ RENDER
+
+    # Устанавливаем команды
+    async def set_commands():
+        await app.bot.set_my_commands([
+            BotCommand("start", "Начать работу"),
+            BotCommand("stats", "Статистика бота"),
+        ])
+        logger.info("Команды бота установлены")
+
+    # Запускаем через встроенный webhook-сервер (он использует uvicorn внутри!)
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
-        url_path="/webhook",
-        webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}.onrender.com/webhook"
+        url_path="/",  # важно: слеш в конце не нужен, просто "/"
+        webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}.onrender.com/",
+        # Дополнительно: можно включить drop_pending_updates
+        drop_pending_updates=True
     )
