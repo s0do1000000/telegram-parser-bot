@@ -1,5 +1,5 @@
 from keep_alive import keep_alive
-keep_alive()  # Запускает Flask в фоне
+keep_alive()        # ← ЭТА СТРОЧКА ДЕЛАЕТ 24/7!
 import os
 import shutil
 import pandas as pd
@@ -470,5 +470,5 @@ def main():
     app.run_polling()
 
 if __name__ == "__main__":
-    print("Бот запущен на polling...")
+    print("Бот запущен 24/7!")
     app.run_polling(drop_pending_updates=True)
