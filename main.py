@@ -1,5 +1,5 @@
 from keep_alive import keep_alive
-keep_alive()  # Запускаем сервер Flask для 24/7
+keep_alive()
 
 # ----------- ВСЁ ТВОЁ (ОСТАВЛЯЮ БЕЗ ИЗМЕНЕНИЙ) -----------
 import os
