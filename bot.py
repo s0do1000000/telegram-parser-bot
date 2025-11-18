@@ -3,7 +3,7 @@ import shutil
 import pandas as pd
 from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.constants import ParseMode
 
 TEXTS = {
@@ -13,6 +13,7 @@ TEXTS = {
         'channels': '📢 Каналы',
         'select_category': '📁 Выберите категорию:',
         'select_format': '📋 Выберите формат:',
+        'select_limit': '🔢 Сколько записей скачать?',
         'txt': '📄 TXT',
         'csv': '📊 CSV',
         'back': '⬅️ Назад',
@@ -21,7 +22,15 @@ TEXTS = {
         'loading': '⏳ Загрузка...',
         'success': '✅ Файл готов к скачиванию!',
         'error': '❌ Ошибка',
-        'no_file': '❌ Файл не найден'
+        'no_file': '❌ Файл не найден',
+        'enter_custom': '✏️ Введите число от 1 до 10000:',
+        'invalid_number': '❌ Неверное число! Введите число от 1 до 10000',
+        'limit_10': '10 записей',
+        'limit_50': '50 записей',
+        'limit_100': '100 записей',
+        'limit_all': 'Все записи',
+        'limit_custom': '✏️ Свое число',
+        'total_records': 'Всего записей в файле: {}'
     },
     'en': {
         'welcome': '🌟 Welcome to ParserTG!\n\nSelect data type:',
@@ -29,6 +38,7 @@ TEXTS = {
         'channels': '📢 Channels',
         'select_category': '📁 Select category:',
         'select_format': '📋 Select format:',
+        'select_limit': '🔢 How many records to download?',
         'txt': '📄 TXT',
         'csv': '📊 CSV',
         'back': '⬅️ Back',
@@ -37,7 +47,15 @@ TEXTS = {
         'loading': '⏳ Loading...',
         'success': '✅ File ready for download!',
         'error': '❌ Error',
-        'no_file': '❌ File not found'
+        'no_file': '❌ File not found',
+        'enter_custom': '✏️ Enter number from 1 to 10000:',
+        'invalid_number': '❌ Invalid number! Enter number from 1 to 10000',
+        'limit_10': '10 records',
+        'limit_50': '50 records',
+        'limit_100': '100 records',
+        'limit_all': 'All records',
+        'limit_custom': '✏️ Custom number',
+        'total_records': 'Total records in file: {}'
     }
 }
 
@@ -151,10 +169,7 @@ CATEGORY_NAMES = {
 CHATS_DIR = Path('./chats')
 CHANNELS_DIR = Path('./channels')
 TEMP_DIR = Path('./temp_downloads')
-# Получаем токен из переменных окружения (обязательно установите на Render)
-TOKEN = os.environ.get('TELEGRAM_TOKEN')
-if not TOKEN:
-    raise ValueError("❌ TELEGRAM_TOKEN не установлен! Добавьте его в Environment Variables на Render")
+TOKEN = '8240135408:AAEWWO7WpWHv3qPt4hLhMZfOikiQgggjOe4'
 
 user_language = {}
 user_state = {}
@@ -185,9 +200,19 @@ def get_category_name(key, lang='ru'):
     lang_dict = CATEGORY_NAMES.get(lang, CATEGORY_NAMES['ru'])
     return lang_dict.get(key, key.title())
 
-def csv_to_txt(csv_path):
+def get_csv_row_count(csv_path):
     try:
         df = pd.read_csv(csv_path, sep=';', encoding='utf-8')
+        return len(df)
+    except:
+        return 0
+
+def csv_to_txt(csv_path, limit=None):
+    try:
+        df = pd.read_csv(csv_path, sep=';', encoding='utf-8')
+        if limit and limit > 0:
+            df = df.head(limit)
+        
         txt_content = ""
         for idx, row in df.iterrows():
             txt_content += f"\n{'='*60}\nЗапись #{idx + 1}\n{'='*60}\n"
@@ -199,16 +224,20 @@ def csv_to_txt(csv_path):
     except:
         return None
 
-def copy_file_to_temp(src_path, format_type):
+def copy_file_to_temp(src_path, format_type, limit=None):
     try:
         filename = src_path.stem
         if format_type == 'csv':
-            dest_path = TEMP_DIR / f"{filename}.csv"
-            shutil.copy(src_path, dest_path)
+            df = pd.read_csv(src_path, sep=';', encoding='utf-8')
+            if limit and limit > 0:
+                df = df.head(limit)
+            
+            dest_path = TEMP_DIR / f"{filename}_limit_{limit if limit else 'all'}.csv"
+            df.to_csv(dest_path, sep=';', encoding='utf-8', index=False)
         elif format_type == 'txt':
-            txt_content = csv_to_txt(src_path)
+            txt_content = csv_to_txt(src_path, limit)
             if txt_content:
-                dest_path = TEMP_DIR / f"{filename}.txt"
+                dest_path = TEMP_DIR / f"{filename}_limit_{limit if limit else 'all'}.txt"
                 with open(dest_path, 'w', encoding='utf-8') as f:
                     f.write(txt_content)
             else:
@@ -231,6 +260,45 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         TEXTS['ru']['language'],
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+async def handle_custom_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    state = user_state.get(user_id, {})
+    
+    if state.get('waiting_for_limit'):
+        try:
+            limit = int(update.message.text.strip())
+            if 1 <= limit <= 10000:
+                user_state[user_id]['limit'] = limit
+                user_state[user_id]['waiting_for_limit'] = False
+                
+                # Получаем файл и формат
+                format_type = state.get('format')
+                categories = get_categories(state.get('type'))
+                src_file = categories.get(state.get('category'))
+                
+                if not src_file:
+                    await update.message.reply_text(get_text(user_id, 'no_file'))
+                    return
+                
+                # Создаем и отправляем файл
+                temp_file = copy_file_to_temp(src_file, format_type, limit)
+                if temp_file and temp_file.exists():
+                    with open(temp_file, 'rb') as f:
+                        await update.message.reply_document(document=f, filename=temp_file.name)
+                    
+                    keyboard = [[InlineKeyboardButton(get_text(user_id, 'home'), callback_data='home')]]
+                    await update.message.reply_text(
+                        get_text(user_id, 'success'),
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+                    
+                    # Удаляем временный файл
+                    temp_file.unlink()
+            else:
+                await update.message.reply_text(get_text(user_id, 'invalid_number'))
+        except ValueError:
+            await update.message.reply_text(get_text(user_id, 'invalid_number'))
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -282,6 +350,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif data.startswith('format_'):
         format_type = data.split('_')[1]
+        user_state[user_id]['format'] = format_type
+        
         state = user_state.get(user_id, {})
         categories = get_categories(state.get('type'))
         src_file = categories.get(state.get('category'))
@@ -290,12 +360,75 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(get_text(user_id, 'no_file'))
             return
         
-        temp_file = copy_file_to_temp(src_file, format_type)
+        # Получаем количество записей в файле
+        total_records = get_csv_row_count(src_file)
+        
+        message_text = f"{get_text(user_id, 'select_limit')}\n\n{get_text(user_id, 'total_records').format(total_records)}"
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(get_text(user_id, 'limit_10'), callback_data='limit_10'),
+                InlineKeyboardButton(get_text(user_id, 'limit_50'), callback_data='limit_50')
+            ],
+            [
+                InlineKeyboardButton(get_text(user_id, 'limit_100'), callback_data='limit_100'),
+                InlineKeyboardButton(get_text(user_id, 'limit_all'), callback_data='limit_all')
+            ],
+            [InlineKeyboardButton(get_text(user_id, 'limit_custom'), callback_data='limit_custom')],
+            [InlineKeyboardButton(get_text(user_id, 'back'), callback_data='back_to_format')]
+        ]
+        
+        await query.edit_message_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    elif data.startswith('limit_'):
+        limit_value = data.split('_')[1]
+        state = user_state.get(user_id, {})
+        
+        if limit_value == 'custom':
+            user_state[user_id]['waiting_for_limit'] = True
+            await query.edit_message_text(get_text(user_id, 'enter_custom'))
+            return
+        
+        # Определяем лимит
+        if limit_value == 'all':
+            limit = None
+        else:
+            limit = int(limit_value)
+        
+        user_state[user_id]['limit'] = limit
+        
+        # Получаем файл
+        format_type = state.get('format')
+        categories = get_categories(state.get('type'))
+        src_file = categories.get(state.get('category'))
+        
+        if not src_file:
+            await query.edit_message_text(get_text(user_id, 'no_file'))
+            return
+        
+        # Показываем загрузку
+        await query.edit_message_text(get_text(user_id, 'loading'))
+        
+        # Создаем файл с лимитом
+        temp_file = copy_file_to_temp(src_file, format_type, limit)
         if temp_file and temp_file.exists():
             with open(temp_file, 'rb') as f:
                 await query.message.reply_document(document=f, filename=temp_file.name)
             keyboard = [[InlineKeyboardButton(get_text(user_id, 'home'), callback_data='home')]]
             await query.edit_message_text(get_text(user_id, 'success'), reply_markup=InlineKeyboardMarkup(keyboard))
+            
+            # Удаляем временный файл
+            temp_file.unlink()
+    
+    elif data == 'back_to_format':
+        category = user_state.get(user_id, {}).get('category')
+        if category:
+            keyboard = [[
+                InlineKeyboardButton(get_text(user_id, 'csv'), callback_data='format_csv'),
+                InlineKeyboardButton(get_text(user_id, 'txt'), callback_data='format_txt')
+            ], [InlineKeyboardButton(get_text(user_id, 'back'), callback_data='back')]]
+            
+            await query.edit_message_text(get_text(user_id, 'select_format'), reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data == 'back':
         data_type = user_state.get(user_id, {}).get('type')
@@ -318,6 +451,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(get_text(user_id, 'select_category'), reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data == 'home':
+        user_state[user_id] = {}  # Очищаем состояние
         keyboard = [[
             InlineKeyboardButton(get_text(user_id, 'chats'), callback_data='type_chats'),
             InlineKeyboardButton(get_text(user_id, 'channels'), callback_data='type_channels')
@@ -328,19 +462,10 @@ def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_limit))
     
-    # Используем webhook для Render (Web Service) или polling для локального запуска
-    if WEBHOOK_URL:
-        print(f"✅ Бот запущен с webhook на {WEBHOOK_URL}")
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=TOKEN,
-            webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
-        )
-    else:
-        print("✅ Бот запущен в режиме polling! Нажмите Ctrl+C для остановки...")
-        app.run_polling()
+    print("✅ Бот запущен! Нажмите Ctrl+C для остановки...")
+    app.run_polling()
 
 if __name__ == '__main__':
     try:
