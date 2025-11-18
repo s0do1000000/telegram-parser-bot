@@ -151,7 +151,7 @@ CATEGORY_NAMES = {
 CHATS_DIR = Path('./chats')
 CHANNELS_DIR = Path('./channels')
 TEMP_DIR = Path('./temp_downloads')
-TOKEN = '8240135408:AAFU1kt-Lmip73swX-HSz7CO_bEJiW_E-GU'
+TOKEN = '8531190272:AAH7EKFvkk2GPoGXVkjzK31Qc9pVGNZ6Qfo'
 
 user_language = {}
 user_state = {}
