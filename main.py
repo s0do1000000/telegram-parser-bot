@@ -1,5 +1,3 @@
-from keep_alive import keep_alive
-keep_alive()        # ← ЭТА СТРОЧКА ДЕЛАЕТ 24/7!
 import os
 import shutil
 import pandas as pd
@@ -469,6 +467,8 @@ def main():
     print("✅ Бот запущен! Нажмите Ctrl+C для остановки...")
     app.run_polling()
 
-if __name__ == "__main__":
-    print("Бот запущен 24/7!")
-    app.run_polling(drop_pending_updates=True)
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n✋ Бот остановлен")
