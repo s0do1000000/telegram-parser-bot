@@ -366,27 +366,27 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ------------------- Запуск на Render -------------------
 if __name__ == "__main__":
+    import logging
+    import os
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
     logger.info("Запуск ParserTG бота на Render...")
 
+    # Создаём приложение
     app = Application.builder().token(TOKEN).build()
 
+    # Добавляем хендлеры
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
 
-    # Установка команд в меню
-    async def set_commands():
-        await app.bot.set_my_commands([
-            BotCommand("start", "Начать работу"),
-            BotCommand("stats", "Статистика бота"),
-        ])
-
-    # Запуск через встроенный webhook-сервер (uvicorn внутри python-telegram-bot)
-           app.run_webhook(
+    # Запуск через webhook — САМАЯ ВАЖНАЯ ЧАСТЬ!
+    app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
-        url_path="/webhook",
-        webhook_url=f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}.onrender.com/webhook",
+        url_path="/webhook",                                                            # ← ОБЯЗАТЕЛЬНО /webhook
+        webhook_url=f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}.onrender.com/webhook",  # ← и здесь тоже
         drop_pending_updates=True,
     )
