@@ -151,7 +151,9 @@ CATEGORY_NAMES = {
 CHATS_DIR = Path('./chats')
 CHANNELS_DIR = Path('./channels')
 TEMP_DIR = Path('./temp_downloads')
-TOKEN = '8531190272:AAH7EKFvkk2GPoGXVkjzK31Qc9pVGNZ6Qfo'
+TOKEN = os.environ.get('TELEGRAM_TOKEN', '8531190272:AAH7EKFvkk2GPoGXVkjzK31Qc9pVGNZ6Qfo')
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')  # Ваш URL на Render
+PORT = int(os.environ.get('PORT', 10000))
 
 user_language = {}
 user_state = {}
@@ -326,8 +328,18 @@ def main():
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CallbackQueryHandler(button_callback))
     
-    print("✅ Бот запущен! Нажмите Ctrl+C для остановки...")
-    app.run_polling()
+    # Используем webhook для Render (Web Service) или polling для локального запуска
+    if WEBHOOK_URL:
+        print(f"✅ Бот запущен с webhook на {WEBHOOK_URL}")
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path=TOKEN,
+            webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+        )
+    else:
+        print("✅ Бот запущен в режиме polling! Нажмите Ctrl+C для остановки...")
+        app.run_polling()
 
 if __name__ == '__main__':
     try:
