@@ -1,5 +1,7 @@
-from keep_alive import keep_alive
-keep_alive()  # Запускает Flask в фоне
+from keep_alive import keep_alive   # ← ЭТА СТРОЧКА ВКЛЮЧАЕТ 24/7
+keep_alive()                        # ← И ЭТА ТОЖЕ ОБЯЗАТЕЛЬНА!
+
+# ← Дальше идёт весь твой код бота (import, TEXTS, хендлеры и т.д.)
 import os
 import shutil
 import pandas as pd
@@ -470,5 +472,5 @@ def main():
     app.run_polling()
 
 if __name__ == "__main__":
-    print("Бот запущен на polling...")
+    print("Бот запущен 24/7!")
     app.run_polling(drop_pending_updates=True)
