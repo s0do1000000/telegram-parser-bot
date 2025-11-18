@@ -1,7 +1,7 @@
-from keep_alive import keep_alive   # ← ЭТА СТРОЧКА ВКЛЮЧАЕТ 24/7
-keep_alive()                        # ← И ЭТА ТОЖЕ ОБЯЗАТЕЛЬНА!
+from keep_alive import keep_alive
+keep_alive()  # Запускаем сервер Flask для 24/7
 
-# ← Дальше идёт весь твой код бота (import, TEXTS, хендлеры и т.д.)
+# ----------- ВСЁ ТВОЁ (ОСТАВЛЯЮ БЕЗ ИЗМЕНЕНИЙ) -----------
 import os
 import shutil
 import pandas as pd
@@ -464,13 +464,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = Application.builder().token(TOKEN).build()
+
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_limit))
-    
-    print("✅ Бот запущен! Нажмите Ctrl+C для остановки...")
-    app.run_polling()
+
+    print("✅ Bot started! Waiting for messages...")
+    app.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
-    print("Бот запущен 24/7!")
-    app.run_polling(drop_pending_updates=True)
+    main()
