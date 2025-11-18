@@ -151,9 +151,10 @@ CATEGORY_NAMES = {
 CHATS_DIR = Path('./chats')
 CHANNELS_DIR = Path('./channels')
 TEMP_DIR = Path('./temp_downloads')
-TOKEN = os.environ.get('TELEGRAM_TOKEN', '8531190272:AAH7EKFvkk2GPoGXVkjzK31Qc9pVGNZ6Qfo')
-WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')  # Ваш URL на Render
-PORT = int(os.environ.get('PORT', 10000))
+# Получаем токен из переменных окружения (обязательно установите на Render)
+TOKEN = os.environ.get('TELEGRAM_TOKEN')
+if not TOKEN:
+    raise ValueError("❌ TELEGRAM_TOKEN не установлен! Добавьте его в Environment Variables на Render")
 
 user_language = {}
 user_state = {}
